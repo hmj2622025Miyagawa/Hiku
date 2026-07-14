@@ -26,9 +26,7 @@ public class CardController : MonoBehaviour
     {
         originalPosition = transform.position;
         isPositionSet = true;
-    }
-    void Start()
-    {
+
         Application.targetFrameRate = 60;
 
         // コンポーネントの自動取得
@@ -39,6 +37,9 @@ public class CardController : MonoBehaviour
         // 初期状態は裏面
         Showback();
     }
+    //void Start()
+    //{
+    //}
 
     // GameManagerから呼び出せるように「Data」に名前を修正
     public void SetCardData(int value, string suit, Sprite frontImage)
@@ -108,6 +109,11 @@ public class CardController : MonoBehaviour
     {
         isFront = false;
         if (cardRenderer != null) cardRenderer.sprite = r_backSprite;
+    }
+
+    public void CloseCard()
+    {
+        gameObject.SetActive(false);
     }
 
     // 情報取得用の関数

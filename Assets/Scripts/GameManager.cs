@@ -1,8 +1,9 @@
 ﻿using System.Collections.Generic;
 using System.Linq;
+using TMPro;
 using UnityEngine;
 using UnityEngine.InputSystem;
-using TMPro; // ★TextMesh Proを使うために追加
+using UnityEngine.UI; // 【追加】UIのボタンを制御するために必要
 
 [System.Serializable]
 public struct CardData
@@ -14,39 +15,82 @@ public struct CardData
 
 public class GameManager : MonoBehaviour
 {
-    [Header("5枚の手札")]
-    [SerializeField] private CardController[] handCards = new CardController[5];
+    private enum GameState
+    {
+        BetTime,    // ベット額を決める状態
+        PlayerTurn, // プレイヤーがホールドを選んでスペースを押すまで
+        ComTurn,    // COMが自動でホールドを選んで交換する番
+        Result,     // 両者の役を比較して勝敗を決める状態
+        GameOver    // 【追加】どちらかが破産した状態
+    }
+
+    [Header("プレイヤーの手札 (5枚)")]
+    [SerializeField] private CardController[] playerHand = new CardController[5];
+
+    [Header("COMの手札 (5枚)")]
+    [SerializeField] private CardController[] comHand = new CardController[5];
 
     [Header("トランプ52枚の画像データ")]
     [SerializeField] private List<CardData> allDeckCards = new List<CardData>();
 
     [Header("UI設定")]
-    [SerializeField] private TextMeshProUGUI resultText;  // ★判定結果を表示するUIテキスト
-    [SerializeField] private TextMeshProUGUI guideText;   // ★操作案内を表示するUIテキスト
+    [SerializeField] private TextMeshProUGUI resultText;  // 勝敗や役を表示
+    [SerializeField] private TextMeshProUGUI guideText;   // 操作案内を表示
+    [SerializeField] private TextMeshProUGUI coinText;    // 所持コインとベット額を表示
+    [SerializeField] private Button retryButton;          // 【追加】リトライボタンの登録枠
 
-    private List<CardData> currentDeck = new List<CardData>(); // 現在の山札（シャッフル用）
-    private bool isFirstTurn = true; // 初回配られた状態（true）か、交換後（false）か
+    [Header("コインシステム設定")]
+    [SerializeField] private int initialCoins = 100;     // 初期コイン
+    [SerializeField] private int defaultBetAmount = 10;   // 1回の基本ベット額
+
+    private List<CardData> currentDeck = new List<CardData>();
+    private GameState currentState;
+
+    private int currentCoins;
+    private int comCoins;
+    private int currentBet;
 
     void Start()
     {
-        // UIの初期化
-        UpdateGuideText("ゲーム開始");
-        if (resultText != null) resultText.text = "";
+        // 最初はリトライボタンを隠しておく
+        if (retryButton != null) retryButton.gameObject.SetActive(false);
 
-        // 52枚の山札を作成してシャッフルし、手札に配る
-        ResetAndDeal();
+        // ゲームの初期化
+        InitGameSettings();
     }
 
-    // ゲームをリセットして新しく配り直す
+    // コインも含めて完全に初期化する関数
+    private void InitGameSettings()
+    {
+        currentCoins = initialCoins;
+        comCoins = initialCoins;
+        UpdateCoinUI();
+        PrepareNewGame();
+    }
+
+    private void PrepareNewGame()
+    {
+        currentState = GameState.BetTime;
+        currentBet = defaultBetAmount;
+
+        if (resultText != null) resultText.text = "";
+        UpdateGuideText("ベットタイム");
+        UpdateCoinUI();
+
+        foreach (var card in playerHand) if (card != null) card.Showback();
+        foreach (var card in comHand) if (card != null) card.Showback();
+    }
+
     public void ResetAndDeal()
     {
-        isFirstTurn = true;
+        currentCoins -= currentBet;
+        UpdateCoinUI();
+
+        currentState = GameState.PlayerTurn;
         currentDeck = new List<CardData>(allDeckCards);
 
-        if (resultText != null) resultText.text = ""; // 結果テキストを空にする
-        UpdateGuideText("ホールド選択");
+        UpdateGuideText("プレイヤーホールド");
 
-        // 山札をシャッフル（フィッシャー・イェーツのアルゴリズム）
         for (int i = currentDeck.Count - 1; i > 0; i--)
         {
             int r = Random.Range(0, i + 1);
@@ -55,147 +99,330 @@ public class GameManager : MonoBehaviour
             currentDeck[r] = tmp;
         }
 
-        // シャッフルした山札の上から5枚を手札のオブジェクトに配る
-        for (int i = 0; i < handCards.Length; i++)
+        for (int i = 0; i < 5; i++)
         {
-            if (handCards[i] != null && currentDeck.Count > 0)
+            if (currentDeck.Count > 0)
             {
-                CardData drawnCard = currentDeck[0];
-                currentDeck.RemoveAt(0); // 山札から引いたカードを消す
+                CardData pCard = currentDeck[0];
+                currentDeck.RemoveAt(0);
+                playerHand[i].SetCardData(pCard.value, pCard.suit, pCard.sprite);
+                playerHand[i].OpenCard();
+            }
+        }
 
-                // 手札のスクリプトにデータを送る
-                handCards[i].SetCardData(drawnCard.value, drawnCard.suit, drawnCard.sprite);
-
-                // 最初はカードを表面にする
-                handCards[i].OpenCard();
+        for (int i = 0; i < 5; i++)
+        {
+            if (currentDeck.Count > 0)
+            {
+                CardData cCard = currentDeck[0];
+                currentDeck.RemoveAt(0);
+                comHand[i].SetCardData(cCard.value, cCard.suit, cCard.sprite);
+                comHand[i].Showback();
             }
         }
     }
 
     void Update()
     {
-        if (Keyboard.current != null && Keyboard.current.spaceKey.wasPressedThisFrame)
-        {
-            if (isFirstTurn)
-            {
-                // 1回目のスペース：ホールドされていないカードを交換して役を判定
-                ExchangeCards();
-                CheckHandResult();
-                isFirstTurn = false;
-                UpdateGuideText("ゲーム終了");
-            }
-            else
-            {
-                // 2回目のスペース：新しく配り直す
-                ResetAndDeal();
-            }
-        }
-    }
+        if (Keyboard.current == null) return;
 
-    // ホールドされていないカードを新しいカードと入れ替える
-    private void ExchangeCards()
-    {
-        for (int i = 0; i < handCards.Length; i++)
-        {
-            if (handCards[i] == null) continue;
+        // ゲームオーバー状態なら入力を受け付けない
+        if (currentState == GameState.GameOver) return;
 
-            // カードがホールド（選択）されていなければ交換する
-            if (!handCards[i].IsHold())
+        if (currentState == GameState.BetTime)
+        {
+            if (Keyboard.current.upArrowKey.wasPressedThisFrame)
             {
-                if (currentDeck.Count > 0)
+                if (currentBet + 10 <= currentCoins && currentBet + 10 <= comCoins)
                 {
-                    CardData drawnCard = currentDeck[0];
-                    currentDeck.RemoveAt(0);
-
-                    handCards[i].SetCardData(drawnCard.value, drawnCard.suit, drawnCard.sprite);
+                    currentBet += 10;
                 }
+                UpdateCoinUI();
             }
+            if (Keyboard.current.downArrowKey.wasPressedThisFrame)
+            {
+                if (currentBet - 10 >= 10) currentBet -= 10;
+                UpdateCoinUI();
+            }
+        }
 
-            // すべてのカードを表面にする
-            handCards[i].OpenCard();
+        if (Keyboard.current.spaceKey.wasPressedThisFrame)
+        {
+            switch (currentState)
+            {
+                case GameState.BetTime:
+                    if (currentCoins >= currentBet && comCoins >= currentBet)
+                    {
+                        ResetAndDeal();
+                    }
+                    else
+                    {
+                        if (resultText != null) resultText.text = "<color=red>コインが足りません！</color>";
+                    }
+                    break;
+
+                case GameState.PlayerTurn:
+                    ExchangeCards(playerHand);
+                    currentState = GameState.ComTurn;
+                    UpdateGuideText("COM思考中");
+                    ProcessComTurn();
+                    break;
+
+                case GameState.Result:
+                    if (currentCoins >= 10 && comCoins >= 10)
+                    {
+                        PrepareNewGame();
+                    }
+                    break;
+            }
         }
     }
 
-    // ★ 5枚の手札からポーカーの役を判定するロジック
-    private void CheckHandResult()
+    private void ExchangeCards(CardController[] hand)
+    {
+        for (int i = 0; i < hand.Length; i++)
+        {
+            if (hand[i] == null) continue;
+
+            if (currentState == GameState.PlayerTurn)
+            {
+                if (!hand[i].IsHold())
+                {
+                    if (currentDeck.Count > 0)
+                    {
+                        CardData drawnCard = currentDeck[0];
+                        currentDeck.RemoveAt(0);
+                        hand[i].SetCardData(drawnCard.value, drawnCard.suit, drawnCard.sprite);
+                    }
+                }
+                hand[i].OpenCard();
+            }
+            else if (currentState == GameState.ComTurn)
+            {
+                if (ShouldComExchangeCard(hand, i))
+                {
+                    if (currentDeck.Count > 0)
+                    {
+                        CardData drawnCard = currentDeck[0];
+                        currentDeck.RemoveAt(0);
+                        hand[i].SetCardData(drawnCard.value, drawnCard.suit, drawnCard.sprite);
+                    }
+                }
+                hand[i].Showback();
+            }
+        }
+    }
+
+    private bool ShouldComExchangeCard(CardController[] hand, int index)
+    {
+        List<int> allValues = new List<int>();
+        foreach (var card in hand)
+        {
+            if (card != null) allValues.Add(card.GetValue());
+        }
+
+        int targetValue = hand[index].GetValue();
+        int count = allValues.Count(v => v == targetValue);
+
+        if (count >= 2) return false;
+
+        List<string> allSuits = hand.Where(c => c != null).Select(c => c.GetSuit()).ToList();
+        string targetSuit = hand[index].GetSuit();
+        int suitCount = allSuits.Count(s => s == targetSuit);
+        if (suitCount == 4) return true;
+
+        return true;
+    }
+
+    private void ProcessComTurn()
+    {
+        ExchangeCards(comHand);
+
+        for (int i = 0; i < comHand.Length; i++)
+        {
+            if (comHand[i] != null) comHand[i].OpenCard();
+        }
+
+        currentState = GameState.Result;
+        UpdateGuideText("結果発表");
+        DetermineWinner();
+    }
+
+    private void DetermineWinner()
+    {
+        string playerHandName = GetHandName(playerHand, out int playerRank);
+        string comHandName = GetHandName(comHand, out int comRank);
+
+        string resultMessage = $"あなた: {playerHandName}\nCOM: {comHandName}\n\n";
+
+        if (playerRank > comRank)
+        {
+            int odds = GetPayoutOdds(playerRank);
+            int winAmount = currentBet * odds;
+
+            if (winAmount > comCoins) winAmount = comCoins;
+
+            currentCoins += winAmount;
+            comCoins -= winAmount;
+
+            resultMessage += $"<color=green>あなたの勝ち！</color> (+{winAmount} コイン)";
+        }
+        else if (playerRank < comRank)
+        {
+            comCoins += currentBet;
+            resultMessage += $"<color=red>COMの勝ち！</color> (-{currentBet} コイン)";
+        }
+        else
+        {
+            currentCoins += currentBet;
+            resultMessage += "引き分け！ (コインが返却されました)";
+        }
+
+        if (resultText != null) resultText.text = resultMessage;
+        UpdateCoinUI();
+
+        // 破産時のゲームオーバー判定
+        if (currentCoins < 10)
+        {
+            currentState = GameState.GameOver;
+            if (resultText != null) resultText.text += "\n<color=red>ゲームオーバー！(あなたの破産)</color>";
+            ShowRetryButton();
+        }
+        else if (comCoins < 10)
+        {
+            currentState = GameState.GameOver;
+            if (resultText != null) resultText.text += "\n<color=yellow>完全勝利！(COMを破産させました！)</color>";
+            ShowRetryButton();
+        }
+    }
+
+    // 【追加】ゲームオーバー時にリトライボタンを表示する処理
+    private void ShowRetryButton()
+    {
+        if (guideText != null) guideText.text = "コインがなくなりました。";
+        if (retryButton != null) retryButton.gameObject.SetActive(true);
+    }
+
+    // 【追加】リトライボタンが押された時にUIから呼び出す関数
+    public void OnRetryButtonClicked()
+    {
+        // ボタンを再び隠す
+        if (retryButton != null) retryButton.gameObject.SetActive(false);
+
+        // お互いのコインをリセットして再スタート
+        InitGameSettings();
+    }
+
+    private int GetPayoutOdds(int rank)
+    {
+        switch (rank)
+        {
+            case 9: return 20;
+            case 8: return 10;
+            case 7: return 7;
+            case 6: return 5;
+            case 5: return 4;
+            case 4: return 3;
+            case 3: return 2;
+            case 2: return 2;
+            default: return 1;
+        }
+    }
+
+    private void UpdateCoinUI()
+    {
+        if (coinText == null) return;
+
+        coinText.text = $"【所持コイン】\n" +
+            $"あなた: {currentCoins}枚\n" + $"ＣＯＭ: {comCoins}枚\n\n" + $"現在のベット: {currentBet}枚";
+    }
+    private string GetHandName(CardController[] hand, out int rank) 
     {
         List<int> values = new List<int>();
         List<string> suits = new List<string>();
-
-        foreach (var card in handCards)
+        foreach (var card in hand) 
         {
             if (card != null)
             {
                 values.Add(card.GetValue());
-                suits.Add(card.GetSuit());
+                suits.Add(card.GetSuit()); 
             }
         }
-
-        values.Sort();
-
-        bool isFlush = suits.Distinct().Count() == 1;
-        bool isStraight = false;
-
+        values.Sort(); 
         bool isNormalStraight = true;
-        for (int i = 0; i < values.Count - 1; i++)
+        for (int i = 0; i < values.Count - 1; i++) 
         {
-            if (values[i + 1] != values[i] + 1)
+            if (values[i + 1] != values[i] + 1) 
             {
-                isNormalStraight = false;
-                break;
+                isNormalStraight = false; break; 
+            } 
+        }
+        bool isAceHighStraight = (values.Count == 5 && values[0] == 1 && values[1] == 10 && values[2] == 11 && values[3] == 12 && values[4] == 13);
+        bool isStraight = isNormalStraight || isAceHighStraight; 
+        bool isFlush = suits.Distinct().Count() == 1;
+        var numberGroups = values.GroupBy(v => v).Select(g => g.Count()).OrderByDescending(c => c).ToList();
+        if (isStraight && isFlush) 
+        { 
+            if (isAceHighStraight)
+            { 
+                rank = 9;
+                return "ロイヤルストレートフラッシュ"; 
             }
+            rank = 8;
+            return "ストレートフラッシュ";
         }
-
-        bool isRoyalStraight = (values[0] == 1 && values[1] == 10 && values[2] == 11 && values[3] == 12 && values[4] == 13);
-
-        if (isNormalStraight || isRoyalStraight)
+        if (numberGroups[0] == 4) 
         {
-            isStraight = true;
+            rank = 7;
+            return "フオーカード"; 
         }
-
-        var numberGroups = values.GroupBy(v => v)
-                                 .Select(g => g.Count())
-                                 .OrderByDescending(c => c)
-                                 .ToList();
-
-        string handName = "ノーペア";
-
-        if (isStraight && isFlush)
+        if (numberGroups[0] == 3 && numberGroups[1] == 2)
+        { 
+            rank = 6;
+            return "フルハウス"; 
+        } 
+        if (isFlush) 
+        { 
+            rank = 5;
+            return "フラッシュ"; 
+        }
+        if (isStraight)
+        { 
+            rank = 4;
+            return "ストレート";
+        }
+        if (numberGroups[0] == 3)
         {
-            if (isRoyalStraight) handName = "ロイヤルストレートフラッシュ";
-            else handName = "ストレートフラッシュ";
+            rank = 3; return "スリーカード"; 
         }
-        else if (numberGroups[0] == 4) handName = "フォーカード";
-        else if (numberGroups[0] == 3 && numberGroups[1] == 2) handName = "フルハウス";
-        else if (isFlush) handName = "フラッシュ";
-        else if (isStraight) handName = "ストレート";
-        else if (numberGroups[0] == 3) handName = "スリーカード";
-        else if (numberGroups[0] == 2 && numberGroups[1] == 2) handName = "ツーペア";
-        else if (numberGroups[0] == 2) handName = "ワンペア";
-
-        // ★【修正】UIテキストに結果を表示する
-        if (resultText != null)
+        if (numberGroups[0] == 2 && numberGroups[1] == 2) 
         {
-            resultText.text = $"役：{handName}";
+            rank = 2; 
+            return "ツーペア";
         }
+        if (numberGroups[0] == 2) 
+        {
+            rank = 1;
+            return "ワンペア"; 
+        }
+        rank = 0;
+        return "ノーペア";
     }
-
-    // ★【追加】現在の状況に合わせて案内テキストを書き換える関数
     private void UpdateGuideText(string state)
     {
-        if (guideText == null) return;
-
+        if (guideText == null) return; 
         switch (state)
         {
-            case "ホールド選択":
-                guideText.text = "残したいカードをタップして [Space] で交換！";
+            case "ベットタイム": guideText.text = "【↑ / ↓】でベット額変更\n【Space】で勝負開始！";
                 break;
-            case "ゲーム終了":
-                guideText.text = "[Space] を押して次のゲームへ";
+            case "プレイヤーホールド": guideText.text = "残したいカードをタップして\n【Space】で交換！";
                 break;
-            default:
-                guideText.text = "";
+            case "COM思考中": guideText.text = "COMがカードを選んでいます..."; 
+                break;
+            case "結果発表": guideText.text = "【Space】を押して次の勝負へ！"; 
                 break;
         }
     }
+
+
 }
