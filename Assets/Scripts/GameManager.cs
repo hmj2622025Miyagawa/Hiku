@@ -3,7 +3,7 @@ using System.Linq;
 using TMPro;
 using UnityEngine;
 using UnityEngine.InputSystem;
-using UnityEngine.UI; // 【追加】UIのボタンを制御するために必要
+using UnityEngine.UI; // UIのボタンを制御するために必要
 
 [System.Serializable]
 public struct CardData
@@ -21,7 +21,7 @@ public class GameManager : MonoBehaviour
         PlayerTurn, // プレイヤーがホールドを選んでスペースを押すまで
         ComTurn,    // COMが自動でホールドを選んで交換する番
         Result,     // 両者の役を比較して勝敗を決める状態
-        GameOver    // 【追加】どちらかが破産した状態
+        GameOver    // どちらかが破産した状態
     }
 
     [Header("プレイヤーの手札 (5枚)")]
@@ -37,11 +37,16 @@ public class GameManager : MonoBehaviour
     [SerializeField] private TextMeshProUGUI resultText;  // 勝敗や役を表示
     [SerializeField] private TextMeshProUGUI guideText;   // 操作案内を表示
     [SerializeField] private TextMeshProUGUI coinText;    // 所持コインとベット額を表示
-    [SerializeField] private Button retryButton;          // 【追加】リトライボタンの登録枠
+    [SerializeField] private Button retryButton;          // リトライボタンの登録枠
 
     [Header("コインシステム設定")]
     [SerializeField] private int initialCoins = 100;     // 初期コイン
     [SerializeField] private int defaultBetAmount = 10;   // 1回の基本ベット額
+
+    [Header("オーディオ設定")]
+    [SerializeField] private AudioSource bgmSource;
+    [SerializeField] private AudioClip gameBgm;
+    [SerializeField] private AudioClip resultBgm;
 
     private List<CardData> currentDeck = new List<CardData>();
     private GameState currentState;
@@ -49,6 +54,19 @@ public class GameManager : MonoBehaviour
     private int currentCoins;
     private int comCoins;
     private int currentBet;
+
+    private void PlayBGM(AudioClip clip, bool loop)
+    {
+        if (bgmSource == null || clip == null) return;
+
+        // 現在再生中のBGMと同じなら、かけ直さない
+        if (bgmSource.clip == clip && bgmSource.isPlaying) return;
+
+        bgmSource.Stop();
+        bgmSource.clip = clip;
+        bgmSource.loop = loop;
+        bgmSource.Play();
+    }
 
     void Start()
     {
@@ -79,11 +97,17 @@ public class GameManager : MonoBehaviour
 
         foreach (var card in playerHand) if (card != null) card.Showback();
         foreach (var card in comHand) if (card != null) card.Showback();
+
+        // 通常BGMループを再生する
+        PlayBGM(gameBgm, true);
     }
 
     public void ResetAndDeal()
     {
+        // お互いの財布からベット額を引いて「場」に出す
         currentCoins -= currentBet;
+        comCoins -= currentBet; // COMからもベット額を引く
+
         UpdateCoinUI();
 
         currentState = GameState.PlayerTurn;
@@ -91,6 +115,7 @@ public class GameManager : MonoBehaviour
 
         UpdateGuideText("プレイヤーホールド");
 
+        // （以下、シャッフルと配る処理はそのまま）
         for (int i = currentDeck.Count - 1; i > 0; i--)
         {
             int r = Random.Range(0, i + 1);
@@ -257,31 +282,51 @@ public class GameManager : MonoBehaviour
 
         if (playerRank > comRank)
         {
+            // プレイヤーの勝利：ベット額 × 役の倍率 が払い戻される
             int odds = GetPayoutOdds(playerRank);
-            int winAmount = currentBet * odds;
+            int payout = currentBet * odds;
 
-            if (winAmount > comCoins) winAmount = comCoins;
+            // COMの残りコイン以上の配当は支払えない
+            int maxPayout = currentBet + comCoins;
+            if (payout > maxPayout) payout = maxPayout;
 
-            currentCoins += winAmount;
-            comCoins -= winAmount;
+            currentCoins += payout;
 
-            resultMessage += $"<color=green>あなたの勝ち！</color> (+{winAmount} コイン)";
+            // COM側の財布の辻褄を合わせる
+            // （COMはすでにベットで currentBet 失っているので、追加で失うのは payout - currentBet 分）
+            int comLoss = payout - currentBet;
+            comCoins -= comLoss;
+
+            resultMessage += $"<color=green>あなたの勝ち！</color>\n配当: {payout} コイン (オッズ: {odds}倍)";
         }
         else if (playerRank < comRank)
         {
-            comCoins += currentBet;
-            resultMessage += $"<color=red>COMの勝ち！</color> (-{currentBet} コイン)";
+            // COMの勝利：COMに配当を支払う（ここではシンプルに2倍＝相手の賭け金を奪う形）
+            int comOdds = GetPayoutOdds(comRank);
+            int payout = currentBet * comOdds;
+
+            int maxPayout = currentBet + currentCoins;
+            if (payout > maxPayout) payout = maxPayout;
+
+            comCoins += payout;
+
+            int playerLoss = payout - currentBet;
+            currentCoins -= playerLoss;
+
+            resultMessage += $"<color=red>COMの勝ち！</color>\nCOMに {payout} コイン持っていかれました...";
         }
         else
         {
+            // 引き分け：賭け金をそのままお互いに返却
             currentCoins += currentBet;
-            resultMessage += "引き分け！ (コインが返却されました)";
+            comCoins += currentBet;
+            resultMessage += "引き分け！ (ベット額が返却されました)";
         }
 
         if (resultText != null) resultText.text = resultMessage;
         UpdateCoinUI();
 
-        // 破産時のゲームオーバー判定
+        // 破産時のゲームオーバー判定 (最低ベット額10枚未満で終了)
         if (currentCoins < 10)
         {
             currentState = GameState.GameOver;
@@ -294,16 +339,22 @@ public class GameManager : MonoBehaviour
             if (resultText != null) resultText.text += "\n<color=yellow>完全勝利！(COMを破産させました！)</color>";
             ShowRetryButton();
         }
+
+        // 結果発表BGMを再生
+        PlayBGM(resultBgm, false);
     }
 
-    // 【追加】ゲームオーバー時にリトライボタンを表示する処理
+    // ゲームオーバー時にリトライボタンを表示する処理
     private void ShowRetryButton()
     {
         if (guideText != null) guideText.text = "コインがなくなりました。";
         if (retryButton != null) retryButton.gameObject.SetActive(true);
+
+        // 破産したらBGMを止める
+        if (bgmSource != null) bgmSource.Stop();
     }
 
-    // 【追加】リトライボタンが押された時にUIから呼び出す関数
+    // リトライボタンが押された時にUIから呼び出す関数
     public void OnRetryButtonClicked()
     {
         // ボタンを再び隠す
@@ -363,7 +414,7 @@ public class GameManager : MonoBehaviour
         var numberGroups = values.GroupBy(v => v).Select(g => g.Count()).OrderByDescending(c => c).ToList();
         if (isStraight && isFlush) 
         { 
-            if (isAceHighStraight)
+            if (isAceHighStraight) 
             { 
                 rank = 9;
                 return "ロイヤルストレートフラッシュ"; 
