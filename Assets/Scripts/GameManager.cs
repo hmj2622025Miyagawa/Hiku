@@ -4,6 +4,7 @@ using TMPro;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.UI; // UIのボタンを制御するために必要
+using UnityEngine.SceneManagement;
 
 [System.Serializable]
 public struct CardData
@@ -151,6 +152,13 @@ public class GameManager : MonoBehaviour
     {
         if (Keyboard.current == null) return;
 
+        // Tキーが押されたらタイトルシーンに戻る
+        if (Keyboard.current.tKey.wasPressedThisFrame)
+        {
+            SceneManager.LoadScene("TitleScene");
+            return;
+        }
+
         // ゲームオーバー状態なら入力を受け付けない
         if (currentState == GameState.GameOver) return;
 
@@ -293,7 +301,6 @@ public class GameManager : MonoBehaviour
             currentCoins += payout;
 
             // COM側の財布の辻褄を合わせる
-            // （COMはすでにベットで currentBet 失っているので、追加で失うのは payout - currentBet 分）
             int comLoss = payout - currentBet;
             comCoins -= comLoss;
 
@@ -336,12 +343,10 @@ public class GameManager : MonoBehaviour
         else if (comCoins < 10)
         {
             currentState = GameState.GameOver;
-            if (resultText != null) resultText.text += "\n<color=yellow>完全勝利！(COMを破産させました！)</color>";
-            ShowRetryButton();
-        }
 
-        // 結果発表BGMを再生
-        PlayBGM(resultBgm, false);
+            // COMが破産したら、勝利シーン（VictoryScene）へ遷移する
+            SceneManager.LoadScene("VictoryScene");
+        }
     }
 
     // ゲームオーバー時にリトライボタンを表示する処理
