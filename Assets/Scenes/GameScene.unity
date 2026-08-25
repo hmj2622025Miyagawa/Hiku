@@ -562,7 +562,7 @@ MonoBehaviour:
   coinText: {fileID: 1227534562}
   retryButton: {fileID: 785712197}
   initialCoins: 1000
-  defaultBetAmount: 1000
+  defaultBetAmount: 100
   bgmSource: {fileID: 177513583}
   gameBgm: {fileID: 8300000, guid: cf273c411450b35489ea975be70a102b, type: 3}
   resultBgm: {fileID: 8300000, guid: 5fabfa3540c073c4e96d9d118cf7aa87, type: 3}

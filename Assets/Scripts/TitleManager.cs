@@ -1,18 +1,21 @@
-using System.Collections;    
+ï»¿using System.Collections;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
 public class TitleManager : MonoBehaviour
 {
-    [Header("“Ç‚İ‚ŞƒQ[ƒ€ƒV[ƒ“‚Ì–¼‘O")]
+    [Header("èª­ã¿è¾¼ã‚€ã‚²ãƒ¼ãƒ ã‚·ãƒ¼ãƒ³ã®åå‰")]
     [SerializeField] private string gameSceneName = "MainScene";
 
-    [Header("ƒI[ƒfƒBƒIİ’è")]
-    [SerializeField] private AudioSource bgmSource;      // BGMÄ¶—p‚ÌAudioSource
-    [SerializeField] private AudioClip titleBgm;         // ƒ^ƒCƒgƒ‹—p‚ÌBGM
-    [SerializeField] private AudioClip clickSe;          // ƒ{ƒ^ƒ“ƒNƒŠƒbƒN‚ÌŒø‰Ê‰¹iSEj
+    [Header("èª­ã¿è¾¼ã‚€æ“ä½œèª¬æ˜ã‚·ãƒ¼ãƒ³ã®åå‰")]
+    [SerializeField] private string descriptionSceneName = "DescriptionScene"; // â­è¿½è¨˜é …ç›®
 
-    private bool isStarting = false; // ˜A‘Å–h~ƒtƒ‰ƒO
+    [Header("ã‚ªãƒ¼ãƒ‡ã‚£ã‚ªè¨­å®š")]
+    [SerializeField] private AudioSource bgmSource;      // BGMå†ç”Ÿç”¨ã®AudioSource
+    [SerializeField] private AudioClip titleBgm;         // ã‚¿ã‚¤ãƒˆãƒ«ç”¨ã®BGM
+    [SerializeField] private AudioClip clickSe;          // ãƒœã‚¿ãƒ³ã‚¯ãƒªãƒƒã‚¯æ™‚ã®åŠ¹æœéŸ³ï¼ˆSEï¼‰
+
+    private bool isStarting = false; // é€£æ‰“é˜²æ­¢ãƒ•ãƒ©ã‚°
 
     void Start()
     {
@@ -24,35 +27,62 @@ public class TitleManager : MonoBehaviour
         }
     }
 
-    // ƒ{ƒ^ƒ“‚ª‰Ÿ‚³‚ê‚½‚Æ‚«‚ÉŒÄ‚Ño‚·ŠÖ”
+    // ãƒœã‚¿ãƒ³ãŒæŠ¼ã•ã‚ŒãŸã¨ãã«å‘¼ã³å‡ºã™é–¢æ•°
     public void OnStartButtonClicked()
     {
-        // ‘JˆÚˆ—’†‚È‚ç‰½‚à‚µ‚È‚¢
+        // é·ç§»å‡¦ç†ä¸­ãªã‚‰ä½•ã‚‚ã—ãªã„
         if (isStarting) return;
         isStarting = true;
 
-        // ƒRƒ‹[ƒ`ƒ“‚ğŠJn‚µ‚ÄA‰¹‚ğ–Â‚ç‚µ‚Ä‚©‚ç‘JˆÚ‚·‚é
+        // ã‚³ãƒ«ãƒ¼ãƒãƒ³ã‚’é–‹å§‹ã—ã¦ã€éŸ³ã‚’é³´ã‚‰ã—ã¦ã‹ã‚‰é·ç§»ã™ã‚‹
         StartCoroutine(StartGameSequence());
+    }
+
+    // â­æ“ä½œèª¬æ˜ãƒœã‚¿ãƒ³ãŒæŠ¼ã•ã‚ŒãŸã¨ãã«å‘¼ã³å‡ºã™é–¢æ•°ï¼ˆè¿½è¨˜ï¼‰
+    public void OnDescriptionButtonClicked()
+    {
+        // é·ç§»å‡¦ç†ä¸­ãªã‚‰ä½•ã‚‚ã—ãªã„
+        if (isStarting) return;
+        isStarting = true;
+
+        // ã‚³ãƒ«ãƒ¼ãƒãƒ³ã‚’é–‹å§‹ã—ã¦ã€éŸ³ã‚’é³´ã‚‰ã—ã¦ã‹ã‚‰æ“ä½œèª¬æ˜ã‚·ãƒ¼ãƒ³ã¸é·ç§»ã™ã‚‹
+        StartCoroutine(StartDescriptionSequence());
     }
 
     private IEnumerator StartGameSequence()
     {
-        // 1. ƒNƒŠƒbƒNŒø‰Ê‰¹‚ğ–Â‚ç‚·
+        // 1. ã‚¯ãƒªãƒƒã‚¯åŠ¹æœéŸ³ã‚’é³´ã‚‰ã™
         if (bgmSource != null && clickSe != null)
         {
-            // BGM‚Ì‰¹—Ê‚ğ‰º‚°‚é‚©A~‚ß‚é
+            // BGMã®éŸ³é‡ã‚’ä¸‹ã’ã‚‹ã‹ã€æ­¢ã‚ã‚‹
             bgmSource.Stop();
 
-            // Œø‰Ê‰¹‚ğ1‰ñ‚¾‚¯Ä¶
+            // åŠ¹æœéŸ³ã‚’1å›ã ã‘å†ç”Ÿ
             bgmSource.PlayOneShot(clickSe);
         }
 
-        // Œø‰Ê‰¹‚ª–Â‚èI‚í‚é‚Ü‚ÅA‚Ü‚½‚Í“K“x‚ÈŠÔ‘Ò‚Â
-        // clickSe.length•b‘Ò‚Â‚ÆAŒø‰Ê‰¹‚Ì’·‚³‚Éƒsƒbƒ^ƒŠ‡‚í‚¹‚ç‚ê‚Ü‚·
+        // åŠ¹æœéŸ³ãŒé³´ã‚Šçµ‚ã‚ã‚‹ã¾ã§ã€ã¾ãŸã¯é©åº¦ãªæ™‚é–“å¾…ã¤
+        // clickSe.lengthç§’å¾…ã¤ã¨ã€åŠ¹æœéŸ³ã®é•·ã•ã«ãƒ”ãƒƒã‚¿ãƒªåˆã‚ã›ã‚‰ã‚Œã¾ã™
         float waitTime = clickSe != null ? clickSe.length : 0.5f;
         yield return new WaitForSeconds(waitTime);
 
-        // ƒV[ƒ“‚ğ“Ç‚İ‚Ş
+        // ã‚·ãƒ¼ãƒ³ã‚’èª­ã¿è¾¼ã‚€
         SceneManager.LoadScene(gameSceneName);
+    }
+
+    // â­æ“ä½œèª¬æ˜ã‚·ãƒ¼ãƒ³ã¸ã®é·ç§»ç”¨ã‚³ãƒ«ãƒ¼ãƒãƒ³ï¼ˆè¿½è¨˜ï¼‰
+    private IEnumerator StartDescriptionSequence()
+    {
+        if (bgmSource != null && clickSe != null)
+        {
+            bgmSource.Stop();
+            bgmSource.PlayOneShot(clickSe);
+        }
+
+        float waitTime = clickSe != null ? clickSe.length : 0.5f;
+        yield return new WaitForSeconds(waitTime);
+
+        // æ“ä½œèª¬æ˜ã‚·ãƒ¼ãƒ³ã‚’èª­ã¿è¾¼ã‚€
+        SceneManager.LoadScene(descriptionSceneName);
     }
 }
