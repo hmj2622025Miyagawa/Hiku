@@ -126,7 +126,6 @@ public class GameManager : MonoBehaviour
 
         UpdateGuideText("プレイヤーホールド");
 
-        // （以下、シャッフルと配る処理はそのまま）
         for (int i = currentDeck.Count - 1; i > 0; i--)
         {
             int r = Random.Range(0, i + 1);
@@ -180,7 +179,7 @@ public class GameManager : MonoBehaviour
 
             if (isUpPressed || isDownPressed)
             {
-                // 最初に対象のキーが押された瞬間（wasPressedThisFrame）の処理
+                // 最初に対象のキーが押された瞬間の処理
                 if (Keyboard.current.upArrowKey.wasPressedThisFrame)
                 {
                     ChangeBet(10);
@@ -196,12 +195,20 @@ public class GameManager : MonoBehaviour
                     // 押しっぱなしの時間を計測
                     keyPressTimer += Time.deltaTime;
 
-                    // 一定時間（longPressDelay）押し続けたら長押し状態モードに入る
+                    // 一定時間押し続けたら長押し状態モードに入る
                     if (keyPressTimer >= longPressDelay)
                     {
+                        // 長押し状態に入ったのでフラグを true にする
+                        if (!isLongPressing)
+                        {
+                            isLongPressing = true;
+                            nextActionTimer = longPressInterval;
+                        }
+
+                        // 次の増減を行うためのタイマーを加算
                         nextActionTimer += Time.deltaTime;
 
-                        // 設定された間隔（longPressInterval）ごとに連続でベット額を変更
+                        // 設定された間隔ごとに連続でベット額を変更
                         if (nextActionTimer >= longPressInterval)
                         {
                             if (isUpPressed) ChangeBet(10);
@@ -214,7 +221,7 @@ public class GameManager : MonoBehaviour
             }
             else
             {
-                // どのキーも押されていない時はタイマーをリセット
+                // どのキーも押されていない時はタイマーと長押しフラグをリセット
                 ResetLongPressTimers();
             }
         }
@@ -423,7 +430,7 @@ public class GameManager : MonoBehaviour
     {
         isTransitioningToVictory = true; // 入力をロック
 
-        // 結果テキストに見栄え用の案内を追加（お好みで変更してください）
+        // 結果テキストに見栄え用の案内を追加
         if (resultText != null)
         {
             resultText.text += "\n\n<color=yellow><b>おめでとうございます！完全勝利！</b></color>\n<size=18>まもなく勝利画面へ移動します...</size>";
