@@ -13,9 +13,6 @@ public class DescriptionManager : MonoBehaviour
 
     private bool isReturning = false; // 連打防止フラグ
 
-    /// <summary>
-    /// 戻るボタンが押されたときにUI（Button）から呼び出す関数
-    /// </summary>
     public void OnBackButtonClicked()
     {
         // すでに遷移中なら何もしない

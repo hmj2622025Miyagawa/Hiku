@@ -56,6 +56,16 @@ public class GameManager : MonoBehaviour
     private int comCoins;
     private int currentBet;
 
+    private bool isTransitioningToVictory = false;
+
+    [Header("長押し設定")]
+    [SerializeField] private float longPressDelay = 0.5f;   // 長押しと判定されるまでの時間(秒)
+    [SerializeField] private float longPressInterval = 0.1f; // 連続で数値が変わる間隔(秒)
+
+    private float keyPressTimer = 0f;    // キーが押されている時間を計るタイマー
+    private float nextActionTimer = 0f;  // 次の増減を行うまでのタイマー
+    private bool isLongPressing = false; // 現在長押し中かどうか
+
     private void PlayBGM(AudioClip clip, bool loop)
     {
         if (bgmSource == null || clip == null) return;
@@ -159,23 +169,53 @@ public class GameManager : MonoBehaviour
             return;
         }
 
-        // ゲームオーバー状態なら入力を受け付けない
-        if (currentState == GameState.GameOver) return;
+        // ゲームオーバー状態、または完全勝利の演出中は入力を受け付けない
+        if (currentState == GameState.GameOver || isTransitioningToVictory) return;
 
         if (currentState == GameState.BetTime)
         {
-            if (Keyboard.current.upArrowKey.wasPressedThisFrame)
+            // 上矢印キーまたは下矢印キーのどちらかが「押されている」かチェック
+            bool isUpPressed = Keyboard.current.upArrowKey.isPressed;
+            bool isDownPressed = Keyboard.current.downArrowKey.isPressed;
+
+            if (isUpPressed || isDownPressed)
             {
-                if (currentBet + 10 <= currentCoins && currentBet + 10 <= comCoins)
+                // 最初に対象のキーが押された瞬間（wasPressedThisFrame）の処理
+                if (Keyboard.current.upArrowKey.wasPressedThisFrame)
                 {
-                    currentBet += 10;
+                    ChangeBet(10);
+                    ResetLongPressTimers();
                 }
-                UpdateCoinUI();
+                else if (Keyboard.current.downArrowKey.wasPressedThisFrame)
+                {
+                    ChangeBet(-10);
+                    ResetLongPressTimers();
+                }
+                else
+                {
+                    // 押しっぱなしの時間を計測
+                    keyPressTimer += Time.deltaTime;
+
+                    // 一定時間（longPressDelay）押し続けたら長押し状態モードに入る
+                    if (keyPressTimer >= longPressDelay)
+                    {
+                        nextActionTimer += Time.deltaTime;
+
+                        // 設定された間隔（longPressInterval）ごとに連続でベット額を変更
+                        if (nextActionTimer >= longPressInterval)
+                        {
+                            if (isUpPressed) ChangeBet(10);
+                            if (isDownPressed) ChangeBet(-10);
+
+                            nextActionTimer = 0f; // タイマーリセット
+                        }
+                    }
+                }
             }
-            if (Keyboard.current.downArrowKey.wasPressedThisFrame)
+            else
             {
-                if (currentBet - 10 >= 10) currentBet -= 10;
-                UpdateCoinUI();
+                // どのキーも押されていない時はタイマーをリセット
+                ResetLongPressTimers();
             }
         }
 
@@ -209,6 +249,35 @@ public class GameManager : MonoBehaviour
                     break;
             }
         }
+    }
+
+    // ベット額を安全に変更するメソッド
+    private void ChangeBet(int amount)
+    {
+        if (amount > 0)
+        {
+            // コインの所持上限を超えないように加算
+            if (currentBet + amount <= currentCoins && currentBet + amount <= comCoins)
+            {
+                currentBet += amount;
+            }
+        }
+        else if (amount < 0)
+        {
+            // 最低ベット（10枚）を下回らないように減算
+            if (currentBet + amount >= 10)
+            {
+                currentBet += amount;
+            }
+        }
+        UpdateCoinUI();
+    }
+
+    // 長押し用タイマーのリセットメソッド
+    private void ResetLongPressTimers()
+    {
+        keyPressTimer = 0f;
+        nextActionTimer = 0f;
     }
 
     private void ExchangeCards(CardController[] hand)
@@ -344,9 +413,27 @@ public class GameManager : MonoBehaviour
         {
             currentState = GameState.GameOver;
 
-            // COMが破産したら、勝利シーン（VictoryScene）へ遷移する
-            SceneManager.LoadScene("VictoryScene");
+            // すぐに遷移せず、5秒待つ
+            StartCoroutine(WaitAndLoadVictoryScene(5.0f));
         }
+    }
+
+    // 指定された秒数待ってからVictorySceneへ遷移するコルーチン
+    private System.Collections.IEnumerator WaitAndLoadVictoryScene(float delaySeconds)
+    {
+        isTransitioningToVictory = true; // 入力をロック
+
+        // 結果テキストに見栄え用の案内を追加（お好みで変更してください）
+        if (resultText != null)
+        {
+            resultText.text += "\n\n<color=yellow><b>おめでとうございます！完全勝利！</b></color>\n<size=18>まもなく勝利画面へ移動します...</size>";
+        }
+
+        // 指定された秒数（5秒）待つ
+        yield return new WaitForSeconds(delaySeconds);
+
+        // シーン遷移
+        SceneManager.LoadScene("VictoryScene");
     }
 
     // ゲームオーバー時にリトライボタンを表示する処理
